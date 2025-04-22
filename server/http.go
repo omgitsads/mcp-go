@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -115,6 +116,20 @@ func (s *StatelessHTTPServer) processMessage(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
+	// Check if Accept header includes either application/json and text/event-stream
+	acceptHeader := r.Header.Get("Accept")
+	if !strings.Contains(acceptHeader, "application/json") && !strings.Contains(acceptHeader, "text/event-stream") {
+		http.Error(w, "Not Acceptable: Client must accept both application/json and text/event-stream", http.StatusNotAcceptable)
+		return
+	}
+
+	// Check if Content-Type header is application/json
+	contentType := r.Header.Get("Content-Type")
+	if contentType != "application/json" {
+		http.Error(w, "Unsupported Media Type: Content-Type must be application/json", http.StatusUnsupportedMediaType)
+		return
+	}
+
 	if r.Method == http.MethodGet {
 		// Return 405 as we don't support Streaming Yet
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -127,21 +142,27 @@ func (s *StatelessHTTPServer) processMessage(
 		return
 	}
 
+	defer r.Body.Close()
+
 	// Parse message as raw JSON
 	var rawMessage json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&rawMessage); err != nil {
 		s.writeJSONRPCError(w, nil, mcp.PARSE_ERROR, "Parse error")
 		return
 	}
-
 	// Handle the message using the wrapped server
 	response := s.server.HandleMessage(r.Context(), rawMessage)
 
 	if response != nil {
 		// send http response
 		w.Header().Set("content-type", "application/json")
-		w.WriteHeader(http.StatusAccepted)
-		json.NewEncoder(w).Encode(response)
+		w.WriteHeader(http.StatusOK)
+		err := json.NewEncoder(w).Encode(response)
+		if err != nil {
+			s.errLogger.Printf("Error writing response: %v", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
 	} else {
 		// for notifications, just send 202 accepted with no body
 		w.WriteHeader(http.StatusAccepted)
@@ -151,7 +172,6 @@ func (s *StatelessHTTPServer) processMessage(
 // ServeHTTP implements the http.Handler interface.
 func (s *StatelessHTTPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
-
 	if path == s.basePath {
 		s.processMessage(w, r)
 		return
