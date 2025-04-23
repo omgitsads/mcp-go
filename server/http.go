@@ -116,6 +116,13 @@ func (s *StatelessHTTPServer) processMessage(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
+	// Check if the request is a POST
+	// We're not supporting SSE over GET for now
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	// Check if Accept header includes either application/json and text/event-stream
 	acceptHeader := r.Header.Get("Accept")
 	if !strings.Contains(acceptHeader, "application/json") && !strings.Contains(acceptHeader, "text/event-stream") {
@@ -127,18 +134,6 @@ func (s *StatelessHTTPServer) processMessage(
 	contentType := r.Header.Get("Content-Type")
 	if contentType != "application/json" {
 		http.Error(w, "Unsupported Media Type: Content-Type must be application/json", http.StatusUnsupportedMediaType)
-		return
-	}
-
-	if r.Method == http.MethodGet {
-		// Return 405 as we don't support Streaming Yet
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Check if the request is a POST
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
