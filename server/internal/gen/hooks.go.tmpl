@@ -12,25 +12,25 @@ import (
 )
 
 // OnRegisterSessionHookFunc is a hook that will be called when a new session is registered.
-type OnRegisterSessionHookFunc func(ctx context.Context, session ClientSession)
+type OnRegisterSessionHookFunc func(ctx context.Context, session ClientSession) context.Context
 
 // OnUnregisterSessionHookFunc is a hook that will be called when a session is being unregistered.
-type OnUnregisterSessionHookFunc func(ctx context.Context, session ClientSession)
+type OnUnregisterSessionHookFunc func(ctx context.Context, session ClientSession) context.Context
 
 // BeforeAnyHookFunc is a function that is called after the request is
 // parsed but before the method is called.
-type BeforeAnyHookFunc func(ctx context.Context, id any, method mcp.MCPMethod, message any)
+type BeforeAnyHookFunc func(ctx context.Context, id any, method mcp.MCPMethod, message any) context.Context
 
 // OnSuccessHookFunc is a hook that will be called after the request
 // successfully generates a result, but before the result is sent to the client.
-type OnSuccessHookFunc func(ctx context.Context, id any, method mcp.MCPMethod, message any, result any)
+type OnSuccessHookFunc func(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) context.Context
 
 // OnErrorHookFunc is a hook that will be called when an error occurs,
 // either during the request parsing or the method execution.
 // 
 // Example usage:
 // ```
-// hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
+// hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) context.Context {
 //   // Check for specific error types using errors.Is
 //   if errors.Is(err, ErrUnsupported) {
 //     // Handle capability not supported errors
@@ -56,17 +56,18 @@ type OnSuccessHookFunc func(ctx context.Context, id any, method mcp.MCPMethod, m
 //   case errors.Is(err, ErrToolNotFound):
 //     log.Printf("Tool not found: %v", err)
 //   }
+// 
+//	return ctx
 // })
-type OnErrorHookFunc func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error)
-
+type OnErrorHookFunc func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) context.Context
 // OnRequestInitializationFunc is a function that called before handle diff request method
 // Should any errors arise during func execution, the service will promptly return the corresponding error message.
-type OnRequestInitializationFunc func(ctx context.Context, id any, message any) error
+type OnRequestInitializationFunc func(ctx context.Context, id any, message any) (context.Context, error)
 
 
 {{range .}}
-type OnBefore{{.HookName}}Func func(ctx context.Context, id any, message *mcp.{{.ParamType}})
-type OnAfter{{.HookName}}Func func(ctx context.Context, id any, message *mcp.{{.ParamType}}, result *mcp.{{.ResultType}})
+type OnBefore{{.HookName}}Func func(ctx context.Context, id any, message *mcp.{{.ParamType}}) context.Context
+type OnAfter{{.HookName}}Func func(ctx context.Context, id any, message *mcp.{{.ParamType}}, result *mcp.{{.ResultType}}) context.Context
 {{end}}
 
 type Hooks struct {
@@ -138,22 +139,24 @@ func (c *Hooks) AddOnError(hook OnErrorHookFunc) {
 	c.OnError = append(c.OnError, hook)
 }
 
-func (c *Hooks) beforeAny(ctx context.Context, id any, method mcp.MCPMethod, message any) {
+func (c *Hooks) beforeAny(ctx context.Context, id any, method mcp.MCPMethod, message any) context.Context {
 	if c == nil {
-		return
+		return ctx
 	}
 	for _, hook := range c.OnBeforeAny {
-		hook(ctx, id, method, message)
+		ctx = hook(ctx, id, method, message)
 	}
+	return ctx
 }
 
-func (c *Hooks) onSuccess(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) {
+func (c *Hooks) onSuccess(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) context.Context {
 	if c == nil {
-		return
+		return ctx
 	}
 	for _, hook := range c.OnSuccess {
-		hook(ctx, id, method, message, result)
+		ctx = hook(ctx, id, method, message, result)
 	}
+	return ctx
 }
 
 // onError calls all registered error hooks with the error object.
@@ -170,56 +173,60 @@ func (c *Hooks) onSuccess(ctx context.Context, id any, method mcp.MCPMethod, mes
 // - ErrResourceNotFound: When a resource is not found
 // - ErrPromptNotFound: When a prompt is not found
 // - ErrToolNotFound: When a tool is not found
-func (c *Hooks) onError(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
+func (c *Hooks) onError(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) context.Context {
 	if c == nil {
-		return
+		return ctx
 	}
 	for _, hook := range c.OnError {
-		hook(ctx, id, method, message, err)
+		ctx = hook(ctx, id, method, message, err)
 	}
+	return ctx
 }
 
 func (c *Hooks) AddOnRegisterSession(hook OnRegisterSessionHookFunc) {
     c.OnRegisterSession = append(c.OnRegisterSession, hook)
 }
 
-func (c *Hooks) RegisterSession(ctx context.Context, session ClientSession) {
+func (c *Hooks) RegisterSession(ctx context.Context, session ClientSession) context.Context {
     if c == nil {
-        return
+        return ctx
     }
     for _, hook := range c.OnRegisterSession {
-        hook(ctx, session)
+        ctx = hook(ctx, session)
     }
+    return ctx
 }
 
 func (c *Hooks) AddOnUnregisterSession(hook OnUnregisterSessionHookFunc) {
     c.OnUnregisterSession = append(c.OnUnregisterSession, hook)
 }
 
-func (c *Hooks) UnregisterSession(ctx context.Context, session ClientSession) {
+func (c *Hooks) UnregisterSession(ctx context.Context, session ClientSession) context.Context {
     if c == nil {
-        return
+        return ctx
     }
     for _, hook := range c.OnUnregisterSession {
-        hook(ctx, session)
+        ctx = hook(ctx, session)
     }
+    return ctx
 }
 
 func (c *Hooks) AddOnRequestInitialization(hook OnRequestInitializationFunc) {
 	c.OnRequestInitialization = append(c.OnRequestInitialization, hook)
 }
 
-func (c *Hooks) onRequestInitialization(ctx context.Context, id any, message any) error {
+func (c *Hooks) onRequestInitialization(ctx context.Context, id any, message any) (context.Context, error) {
 	if c == nil {
-		return nil
+		return ctx, nil
 	}
+	var err error
 	for _, hook := range c.OnRequestInitialization {
-		err := hook(ctx, id, message)
+		ctx, err = hook(ctx, id, message)
 		if err != nil {
-			return err
+			return ctx, err
 		}
 	}
-	return nil
+	return ctx, nil
 }
 
 {{- range .}}
@@ -231,23 +238,25 @@ func (c *Hooks) AddAfter{{.HookName}}(hook OnAfter{{.HookName}}Func) {
 	c.OnAfter{{.HookName}} = append(c.OnAfter{{.HookName}}, hook)
 }
 
-func (c *Hooks) before{{.HookName}}(ctx context.Context, id any, message *mcp.{{.ParamType}}) {
-	c.beforeAny(ctx, id, mcp.{{.MethodName}}, message)
+func (c *Hooks) before{{.HookName}}(ctx context.Context, id any, message *mcp.{{.ParamType}}) context.Context {
+	ctx = c.beforeAny(ctx, id, mcp.{{.MethodName}}, message)
 	if c == nil {
-		return
+		return ctx
 	}
 	for _, hook := range c.OnBefore{{.HookName}} {
-		hook(ctx, id, message)
+		ctx = hook(ctx, id, message)
 	}
+	return ctx
 }
 
-func (c *Hooks) after{{.HookName}}(ctx context.Context, id any, message *mcp.{{.ParamType}}, result *mcp.{{.ResultType}}) {
-	c.onSuccess(ctx, id, mcp.{{.MethodName}}, message, result)
+func (c *Hooks) after{{.HookName}}(ctx context.Context, id any, message *mcp.{{.ParamType}}, result *mcp.{{.ResultType}}) context.Context {
+	ctx = c.onSuccess(ctx, id, mcp.{{.MethodName}}, message, result)
 	if c == nil {
-		return
+		return ctx
 	}
 	for _, hook := range c.OnAfter{{.HookName}} {
-		hook(ctx, id, message, result)
+		ctx = hook(ctx, id, message, result)
 	}
+	return ctx
 }
 {{- end -}}
