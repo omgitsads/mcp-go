@@ -39,7 +39,7 @@ type MCPClient struct {
 	serverInfo *mcp.InitializeResult
 }
 
-// NewMCPClient creates a new MCP client with an in-memory MCP server.
+// NewMCPClient creates a new MCP client with an in-process MCP server.
 func NewMCPClient(ctx context.Context) (*MCPClient, error) {
 	srv := NewMCPServer()
 	client, err := client.NewInProcessClient(srv)
