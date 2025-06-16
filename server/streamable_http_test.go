@@ -76,6 +76,49 @@ func TestStreamableHTTPServerBasic(t *testing.T) {
 	})
 }
 
+func TestStreamableHTTP_POST_ContentTypeParameters(t *testing.T) {
+	mcpServer := NewMCPServer("test-mcp-server", "1.0")
+	addSSETool(mcpServer)
+	server := NewTestStreamableHTTPServer(mcpServer)
+
+	t.Run("Send and receive message", func(t *testing.T) {
+		sessionID, resp, err := initializeSession(server.URL)
+		defer resp.Body.Close()
+		if err != nil {
+			t.Fatalf("Failed to initialize session: %v", err)
+		}
+
+		// send ping message
+		pingMessage := map[string]any{
+			"jsonrpc": "2.0",
+			"id":      123,
+			"method":  "ping",
+			"params":  map[string]any{},
+		}
+		pingMessageBody, _ := json.Marshal(pingMessage)
+		req, err := http.NewRequest("POST", server.URL, bytes.NewBuffer(pingMessageBody))
+		if err != nil {
+			t.Fatalf("Failed to create request: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/json; charset=utf-8") // Include charset
+		req.Header.Set(headerKeySessionID, sessionID)
+
+		resp, err = server.Client().Do(req)
+		if err != nil {
+			t.Fatalf("Failed to send message: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Expected status 200, got %d", resp.StatusCode)
+		}
+
+		if resp.Header.Get("content-type") != "application/json" {
+			t.Errorf("Expected content-type application/json, got %s", resp.Header.Get("content-type"))
+		}
+	})
+}
+
 func TestStreamableHTTP_POST_InvalidContent(t *testing.T) {
 	mcpServer := NewMCPServer("test-mcp-server", "1.0")
 	addSSETool(mcpServer)
@@ -780,4 +823,32 @@ func postJSON(url string, bodyObject any) (*http.Response, error) {
 	req, _ := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(jsonBody))
 	req.Header.Set("Content-Type", "application/json")
 	return http.DefaultClient.Do(req)
+}
+
+func initializeSession(url string) (string, *http.Response, error) {
+	// Send initialize request
+	resp, err := postJSON(url, initRequest)
+	if err != nil {
+		return "", nil, fmt.Errorf("Failed to send message: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", nil, fmt.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	var responseMessage jsonRPCResponse
+	if err := json.Unmarshal(bodyBytes, &responseMessage); err != nil {
+		return "", nil, fmt.Errorf("Failed to unmarshal response: %v", err)
+	}
+	if responseMessage.Result["protocolVersion"] != "2025-03-26" {
+		return "", nil, fmt.Errorf("Expected protocol version 2025-03-26, got %s", responseMessage.Result["protocolVersion"])
+	}
+
+	// get session id from header
+	sessionID := resp.Header.Get(headerKeySessionID)
+	if sessionID == "" {
+		return "", nil, fmt.Errorf("Expected session id in header, got %s", sessionID)
+	}
+
+	return sessionID, resp, nil
 }
