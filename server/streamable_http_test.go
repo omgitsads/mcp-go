@@ -82,7 +82,8 @@ func TestStreamableHTTP_POST_ContentTypeParameters(t *testing.T) {
 	server := NewTestStreamableHTTPServer(mcpServer)
 
 	t.Run("Send and receive message", func(t *testing.T) {
-		sessionID, _, err := initializeSession(server.URL)
+		sessionID, resp, err := initializeSession(server.URL)
+		defer resp.Body.Close()
 		if err != nil {
 			t.Fatalf("Failed to initialize session: %v", err)
 		}
@@ -102,7 +103,7 @@ func TestStreamableHTTP_POST_ContentTypeParameters(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json; charset=utf-8") // Include charset
 		req.Header.Set(headerKeySessionID, sessionID)
 
-		resp, err := server.Client().Do(req)
+		resp, err = server.Client().Do(req)
 		if err != nil {
 			t.Fatalf("Failed to send message: %v", err)
 		}
@@ -830,7 +831,6 @@ func initializeSession(url string) (string, *http.Response, error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("Failed to send message: %v", err)
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", nil, fmt.Errorf("Expected status 200, got %d", resp.StatusCode)
