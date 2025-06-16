@@ -1001,9 +1001,8 @@ func TestMCPServer_HandleInvalidMessages(t *testing.T) {
 	var errs []error
 	hooks := &Hooks{}
 	hooks.AddOnError(
-		func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) context.Context {
+		func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
 			errs = append(errs, err)
-			return ctx
 		},
 	)
 
@@ -1087,19 +1086,16 @@ func TestMCPServer_HandleUndefinedHandlers(t *testing.T) {
 	var afterResults []afterResult
 	hooks := &Hooks{}
 	hooks.AddOnError(
-		func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) context.Context {
+		func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
 			errs = append(errs, err)
-			return ctx
 		},
 	)
-	hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) context.Context {
+	hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) {
 		beforeResults = append(beforeResults, beforeResult{method, message})
-		return ctx
 	})
 	hooks.AddOnSuccess(
-		func(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) context.Context {
+		func(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) {
 			afterResults = append(afterResults, afterResult{method, message, result})
-			return ctx
 		},
 	)
 
@@ -1220,9 +1216,8 @@ func TestMCPServer_HandleMethodsWithoutCapabilities(t *testing.T) {
 	var errs []error
 	hooks := &Hooks{}
 	hooks.AddOnError(
-		func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) context.Context {
+		func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
 			errs = append(errs, err)
-			return ctx
 		},
 	)
 	hooksOption := WithHooks(hooks)
@@ -1558,17 +1553,16 @@ func TestMCPServer_WithHooks(t *testing.T) {
 	hooks := &Hooks{}
 
 	// Register "any" hooks with type verification
-	hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) context.Context {
+	hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) {
 		beforeAnyCount++
 		// Only collect ping messages for our test
 		if method == mcp.MethodPing {
 			beforeAnyMessages = append(beforeAnyMessages, message)
 		}
-		return ctx
 	})
 
 	hooks.AddOnSuccess(
-		func(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) context.Context {
+		func(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) {
 			onSuccessCount++
 			// Only collect ping responses for our test
 			if method == mcp.MethodPing {
@@ -1577,50 +1571,44 @@ func TestMCPServer_WithHooks(t *testing.T) {
 					res any
 				}{message, result})
 			}
-			return ctx
 		},
 	)
 
 	hooks.AddOnError(
-		func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) context.Context {
+		func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
 			onErrorCount++
-			return ctx
 		},
 	)
 
 	// Register method-specific hooks with type verification
-	hooks.AddBeforePing(func(ctx context.Context, id any, message *mcp.PingRequest) context.Context {
+	hooks.AddBeforePing(func(ctx context.Context, id any, message *mcp.PingRequest) {
 		beforePingCount++
 		beforePingMessages = append(beforePingMessages, message)
-		return ctx
 	})
 
 	hooks.AddAfterPing(
-		func(ctx context.Context, id any, message *mcp.PingRequest, result *mcp.EmptyResult) context.Context {
+		func(ctx context.Context, id any, message *mcp.PingRequest, result *mcp.EmptyResult) {
 			afterPingCount++
 			afterPingData = append(afterPingData, struct {
 				msg *mcp.PingRequest
 				res *mcp.EmptyResult
 			}{message, result})
-			return ctx
 		},
 	)
 
-	hooks.AddBeforeListTools(func(ctx context.Context, id any, message *mcp.ListToolsRequest) context.Context {
+	hooks.AddBeforeListTools(func(ctx context.Context, id any, message *mcp.ListToolsRequest) {
 		beforeToolsCount++
-		return ctx
 	})
 
 	hooks.AddAfterListTools(
-		func(ctx context.Context, id any, message *mcp.ListToolsRequest, result *mcp.ListToolsResult) context.Context {
+		func(ctx context.Context, id any, message *mcp.ListToolsRequest, result *mcp.ListToolsResult) {
 			afterToolsCount++
-			return ctx
 		},
 	)
 
-	hooks.AddOnRequestInitialization(func(ctx context.Context, id any, message any) (context.Context, error) {
+	hooks.AddOnRequestInitialization(func(ctx context.Context, id any, message any) error {
 		onRequestInitializationCount++
-		return ctx, nil
+		return nil
 	})
 
 	// Create a server with the hooks
@@ -1747,17 +1735,15 @@ func TestMCPServer_SessionHooks(t *testing.T) {
 	)
 
 	hooks := &Hooks{}
-	hooks.AddOnRegisterSession(func(ctx context.Context, session ClientSession) context.Context {
+	hooks.AddOnRegisterSession(func(ctx context.Context, session ClientSession) {
 		registerCalled = true
 		registeredContext = ctx
 		registeredSession = session
-		return ctx
 	})
-	hooks.AddOnUnregisterSession(func(ctx context.Context, session ClientSession) context.Context {
+	hooks.AddOnUnregisterSession(func(ctx context.Context, session ClientSession) {
 		unregisterCalled = true
 		unregisteredContext = ctx
 		unregisteredSession = session
-		return ctx
 	})
 
 	server := NewMCPServer(

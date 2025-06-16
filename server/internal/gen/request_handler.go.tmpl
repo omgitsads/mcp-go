@@ -63,7 +63,7 @@ func (s *MCPServer) HandleMessage(
 		return nil
 	}
 
-	ctx, handleErr := s.hooks.onRequestInitialization(ctx, baseMessage.ID, message)
+	handleErr := s.hooks.onRequestInitialization(ctx, baseMessage.ID, message)
     if handleErr != nil {
     	return createErrorResponse(
     		baseMessage.ID,
@@ -90,14 +90,14 @@ func (s *MCPServer) HandleMessage(
 				err:  &UnparsableMessageError{message: message, err: unmarshalErr, method: baseMessage.Method},
 			}
 		} else {
-			ctx = s.hooks.before{{.HookName}}(ctx, baseMessage.ID, &request)
+			s.hooks.before{{.HookName}}(ctx, baseMessage.ID, &request)
 			result, err = s.{{.HandlerFunc}}(ctx, baseMessage.ID, request)
 		}
 		if err != nil {
-			ctx = s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
+			s.hooks.onError(ctx, baseMessage.ID, baseMessage.Method, &request, err)
 			return err.ToJSONRPCError()
 		}
-		ctx = s.hooks.after{{.HookName}}(ctx, baseMessage.ID, &request, result)
+		s.hooks.after{{.HookName}}(ctx, baseMessage.ID, &request, result)
 		return createResponse(baseMessage.ID, *result)
 	{{- end }}
 	default:
