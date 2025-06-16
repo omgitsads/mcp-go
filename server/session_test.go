@@ -388,8 +388,9 @@ func TestMCPServer_AddSessionToolsUninitialized(t *testing.T) {
 	errorChan := make(chan error)
 	hooks := &Hooks{}
 	hooks.AddOnError(
-		func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
+		func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) context.Context {
 			errorChan <- err
+			return ctx
 		},
 	)
 
@@ -481,8 +482,9 @@ func TestMCPServer_DeleteSessionToolsUninitialized(t *testing.T) {
 	errorChan := make(chan error)
 	hooks := &Hooks{}
 	hooks.AddOnError(
-		func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
+		func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) context.Context {
 			errorChan <- err
+			return ctx
 		},
 	)
 
@@ -799,7 +801,7 @@ func TestMCPServer_NotificationChannelBlocked(t *testing.T) {
 	errorMethod := ""
 
 	hooks := &Hooks{}
-	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
+	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) context.Context {
 		mu.Lock()
 		defer mu.Unlock()
 
@@ -815,6 +817,7 @@ func TestMCPServer_NotificationChannelBlocked(t *testing.T) {
 		}
 		// Verify the error is a notification channel blocked error
 		assert.True(t, errors.Is(err, ErrNotificationChannelBlocked))
+		return ctx
 	})
 
 	// Create a server with hooks
