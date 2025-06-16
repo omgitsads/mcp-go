@@ -1145,11 +1145,10 @@ func TestSSEServer(t *testing.T) {
 		// Create hooks to track sessions
 		hooks := &Hooks{}
 		var registeredSession *sseSession
-		hooks.AddOnRegisterSession(func(ctx context.Context, session ClientSession) context.Context {
+		hooks.AddOnRegisterSession(func(ctx context.Context, session ClientSession) {
 			if s, ok := session.(*sseSession); ok {
 				registeredSession = s
 			}
-			return ctx
 		})
 
 		mcpServer := NewMCPServer("test", "1.0.0", WithHooks(hooks))
@@ -1257,9 +1256,8 @@ func TestSSEServer(t *testing.T) {
 			WithResourceCapabilities(true, true),
 			WithHooks(&Hooks{
 				OnAfterInitialize: []OnAfterInitializeFunc{
-					func(ctx context.Context, id any, message *mcp.InitializeRequest, result *mcp.InitializeResult) context.Context {
+					func(ctx context.Context, id any, message *mcp.InitializeRequest, result *mcp.InitializeResult) {
 						result.Meta = map[string]any{"invalid": func() {}} // marshal will fail
-						return ctx
 					},
 				},
 			}),

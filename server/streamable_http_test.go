@@ -602,14 +602,13 @@ func TestStreamableHTTP_SessionWithTools(t *testing.T) {
 		var sessionRegistered sync.WaitGroup
 		sessionRegistered.Add(1)
 
-		hooks.AddOnRegisterSession(func(ctx context.Context, session ClientSession) context.Context {
+		hooks.AddOnRegisterSession(func(ctx context.Context, session ClientSession) {
 			if s, ok := session.(*streamableHttpSession); ok {
 				mu.Lock()
 				registeredSession = s
 				mu.Unlock()
 				sessionRegistered.Done()
 			}
-			return ctx
 		})
 
 		mcpServer := NewMCPServer("test", "1.0.0", WithHooks(hooks))

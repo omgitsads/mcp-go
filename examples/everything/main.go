@@ -34,38 +34,31 @@ func NewMCPServer() *server.MCPServer {
 
 	hooks := &server.Hooks{}
 
-	hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) context.Context {
+	hooks.AddBeforeAny(func(ctx context.Context, id any, method mcp.MCPMethod, message any) {
 		fmt.Printf("beforeAny: %s, %v, %v\n", method, id, message)
-		return ctx
 	})
-	hooks.AddOnSuccess(func(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) context.Context {
+	hooks.AddOnSuccess(func(ctx context.Context, id any, method mcp.MCPMethod, message any, result any) {
 		fmt.Printf("onSuccess: %s, %v, %v, %v\n", method, id, message, result)
-		return ctx
 	})
-	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) context.Context {
+	hooks.AddOnError(func(ctx context.Context, id any, method mcp.MCPMethod, message any, err error) {
 		fmt.Printf("onError: %s, %v, %v, %v\n", method, id, message, err)
-		return ctx
 	})
-	hooks.AddBeforeInitialize(func(ctx context.Context, id any, message *mcp.InitializeRequest) context.Context {
+	hooks.AddBeforeInitialize(func(ctx context.Context, id any, message *mcp.InitializeRequest) {
 		fmt.Printf("beforeInitialize: %v, %v\n", id, message)
-		return ctx
 	})
-	hooks.AddOnRequestInitialization(func(ctx context.Context, id any, message any) (context.Context, error) {
+	hooks.AddOnRequestInitialization(func(ctx context.Context, id any, message any) error {
 		fmt.Printf("AddOnRequestInitialization: %v, %v\n", id, message)
 		// authorization verification and other preprocessing tasks are performed.
-		return ctx, nil
+		return nil
 	})
-	hooks.AddAfterInitialize(func(ctx context.Context, id any, message *mcp.InitializeRequest, result *mcp.InitializeResult) context.Context {
+	hooks.AddAfterInitialize(func(ctx context.Context, id any, message *mcp.InitializeRequest, result *mcp.InitializeResult) {
 		fmt.Printf("afterInitialize: %v, %v, %v\n", id, message, result)
-		return ctx
 	})
-	hooks.AddAfterCallTool(func(ctx context.Context, id any, message *mcp.CallToolRequest, result *mcp.CallToolResult) context.Context {
+	hooks.AddAfterCallTool(func(ctx context.Context, id any, message *mcp.CallToolRequest, result *mcp.CallToolResult) {
 		fmt.Printf("afterCallTool: %v, %v, %v\n", id, message, result)
-		return ctx
 	})
-	hooks.AddBeforeCallTool(func(ctx context.Context, id any, message *mcp.CallToolRequest) context.Context {
+	hooks.AddBeforeCallTool(func(ctx context.Context, id any, message *mcp.CallToolRequest) {
 		fmt.Printf("beforeCallTool: %v, %v\n", id, message)
-		return ctx
 	})
 
 	mcpServer := server.NewMCPServer(
