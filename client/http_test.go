@@ -3,20 +3,22 @@ package client
 import (
 	"context"
 	"fmt"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 	"testing"
 	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 )
 
 func TestHTTPClient(t *testing.T) {
 	hooks := &server.Hooks{}
-	hooks.AddAfterCallTool(func(ctx context.Context, id any, message *mcp.CallToolRequest, result *mcp.CallToolResult) {
+	hooks.AddAfterCallTool(func(ctx context.Context, id any, message *mcp.CallToolRequest, result *mcp.CallToolResult) context.Context {
 		clientSession := server.ClientSessionFromContext(ctx)
 		// wait until all the notifications are handled
 		for len(clientSession.NotificationChannel()) > 0 {
 		}
 		time.Sleep(time.Millisecond * 50)
+		return ctx
 	})
 
 	// Create MCP server with capabilities
