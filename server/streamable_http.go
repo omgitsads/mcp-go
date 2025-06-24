@@ -93,6 +93,18 @@ func WithLogger(logger util.Logger) StreamableHTTPOption {
 	}
 }
 
+func WithNewSessionFn(fn func(sessionID string, toolStore SessionToolStore) SessionWithStreamableHTTPConfig) StreamableHTTPOption {
+	return func(s *StreamableHTTPServer) {
+		s.newSessionFn = fn
+	}
+}
+
+func WithNotificationsStreamDisabled(disabled bool) StreamableHTTPOption {
+	return func(s *StreamableHTTPServer) {
+		s.notificationsStreamDisabled = disabled
+	}
+}
+
 // StreamableHTTPServer implements a Streamable-http based MCP server.
 // It communicates with clients over HTTP protocol, supporting both direct HTTP responses, and SSE streams.
 // https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http
@@ -119,17 +131,19 @@ func WithLogger(logger util.Logger) StreamableHTTPOption {
 //   - Stream Resumability
 type StreamableHTTPServer struct {
 	server            *MCPServer
-	sessionTools      *sessionToolsStore
+	sessionTools      SessionToolStore
+	newSessionFn      func(sessionID string, toolStore SessionToolStore) SessionWithStreamableHTTPConfig
 	sessionRequestIDs sync.Map // sessionId --> last requestID(*atomic.Int64)
 
 	httpServer *http.Server
 	mu         sync.RWMutex
 
-	endpointPath            string
-	contextFunc             HTTPContextFunc
-	sessionIdManager        SessionIdManager
-	listenHeartbeatInterval time.Duration
-	logger                  util.Logger
+	endpointPath                string
+	contextFunc                 HTTPContextFunc
+	sessionIdManager            SessionIdManager
+	listenHeartbeatInterval     time.Duration
+	logger                      util.Logger
+	notificationsStreamDisabled bool
 }
 
 // NewStreamableHTTPServer creates a new streamable-http server instance
@@ -140,6 +154,9 @@ func NewStreamableHTTPServer(server *MCPServer, opts ...StreamableHTTPOption) *S
 		endpointPath:     "/mcp",
 		sessionIdManager: &InsecureStatefulSessionIdManager{},
 		logger:           util.DefaultLogger(),
+		newSessionFn: func(sessionID string, toolStore SessionToolStore) SessionWithStreamableHTTPConfig {
+			return newStreamableHttpSession(sessionID, toolStore)
+		},
 	}
 
 	// Apply all options
@@ -256,7 +273,7 @@ func (s *StreamableHTTPServer) handlePost(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	session := newStreamableHttpSession(sessionID, s.sessionTools)
+	session := s.newSessionFn(sessionID, s.sessionTools)
 
 	// Set the client context before handling the message
 	ctx := s.server.WithContext(r.Context(), session)
@@ -272,7 +289,7 @@ func (s *StreamableHTTPServer) handlePost(w http.ResponseWriter, r *http.Request
 	go func() {
 		for {
 			select {
-			case nt := <-session.notificationChannel:
+			case nt := <-session.ReceiveNotificationChannel():
 				func() {
 					mu.Lock()
 					defer mu.Unlock()
@@ -328,7 +345,7 @@ func (s *StreamableHTTPServer) handlePost(w http.ResponseWriter, r *http.Request
 		return
 	}
 	// If client-server communication already upgraded to SSE stream
-	if session.upgradeToSSE.Load() {
+	if session.UpgradeToSSE() {
 		if !upgradedHeader {
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.Header().Set("Connection", "keep-alive")
@@ -354,6 +371,10 @@ func (s *StreamableHTTPServer) handlePost(w http.ResponseWriter, r *http.Request
 }
 
 func (s *StreamableHTTPServer) handleGet(w http.ResponseWriter, r *http.Request) {
+	if s.notificationsStreamDisabled {
+		http.Error(w, "Notifications stream is disabled", http.StatusMethodNotAllowed)
+		return
+	}
 	// get request is for listening to notifications
 	// https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#listening-for-messages-from-the-server
 
@@ -366,7 +387,7 @@ func (s *StreamableHTTPServer) handleGet(w http.ResponseWriter, r *http.Request)
 		sessionID = uuid.New().String()
 	}
 
-	session := newStreamableHttpSession(sessionID, s.sessionTools)
+	session := s.newSessionFn(sessionID, s.sessionTools)
 	if err := s.server.RegisterSession(r.Context(), session); err != nil {
 		http.Error(w, fmt.Sprintf("Session registration failed: %v", err), http.StatusBadRequest)
 		return
@@ -394,7 +415,7 @@ func (s *StreamableHTTPServer) handleGet(w http.ResponseWriter, r *http.Request)
 	go func() {
 		for {
 			select {
-			case nt := <-session.notificationChannel:
+			case nt := <-session.ReceiveNotificationChannel():
 				select {
 				case writeChan <- &nt:
 				case <-done:
@@ -468,7 +489,7 @@ func (s *StreamableHTTPServer) handleDelete(w http.ResponseWriter, r *http.Reque
 	}
 
 	// remove the session relateddata from the sessionToolsStore
-	s.sessionTools.delete(sessionID)
+	s.sessionTools.Delete(sessionID)
 
 	// remove current session's requstID information
 	s.sessionRequestIDs.Delete(sessionID)
@@ -513,30 +534,37 @@ func (s *StreamableHTTPServer) nextRequestID(sessionID string) int64 {
 
 // --- session ---
 
-type sessionToolsStore struct {
+// SessionToolStore is an interface for storing tools associated with a session.
+type SessionToolStore interface {
+	Get(sessionID string) map[string]ServerTool
+	Set(sessionID string, tools map[string]ServerTool)
+	Delete(sessionID string)
+}
+
+type localSessionToolStore struct {
 	mu    sync.RWMutex
 	tools map[string]map[string]ServerTool // sessionID -> toolName -> tool
 }
 
-func newSessionToolsStore() *sessionToolsStore {
-	return &sessionToolsStore{
+func newSessionToolsStore() *localSessionToolStore {
+	return &localSessionToolStore{
 		tools: make(map[string]map[string]ServerTool),
 	}
 }
 
-func (s *sessionToolsStore) get(sessionID string) map[string]ServerTool {
+func (s *localSessionToolStore) Get(sessionID string) map[string]ServerTool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.tools[sessionID]
 }
 
-func (s *sessionToolsStore) set(sessionID string, tools map[string]ServerTool) {
+func (s *localSessionToolStore) Set(sessionID string, tools map[string]ServerTool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.tools[sessionID] = tools
 }
 
-func (s *sessionToolsStore) delete(sessionID string) {
+func (s *localSessionToolStore) Delete(sessionID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.tools, sessionID)
@@ -548,11 +576,11 @@ func (s *sessionToolsStore) delete(sessionID string) {
 type streamableHttpSession struct {
 	sessionID           string
 	notificationChannel chan mcp.JSONRPCNotification // server -> client notifications
-	tools               *sessionToolsStore
+	tools               SessionToolStore
 	upgradeToSSE        atomic.Bool
 }
 
-func newStreamableHttpSession(sessionID string, toolStore *sessionToolsStore) *streamableHttpSession {
+func newStreamableHttpSession(sessionID string, toolStore SessionToolStore) SessionWithStreamableHTTPConfig {
 	return &streamableHttpSession{
 		sessionID:           sessionID,
 		notificationChannel: make(chan mcp.JSONRPCNotification, 100),
@@ -581,17 +609,25 @@ func (s *streamableHttpSession) Initialized() bool {
 var _ ClientSession = (*streamableHttpSession)(nil)
 
 func (s *streamableHttpSession) GetSessionTools() map[string]ServerTool {
-	return s.tools.get(s.sessionID)
+	return s.tools.Get(s.sessionID)
 }
 
 func (s *streamableHttpSession) SetSessionTools(tools map[string]ServerTool) {
-	s.tools.set(s.sessionID, tools)
+	s.tools.Set(s.sessionID, tools)
 }
 
 var _ SessionWithTools = (*streamableHttpSession)(nil)
 
 func (s *streamableHttpSession) UpgradeToSSEWhenReceiveNotification() {
 	s.upgradeToSSE.Store(true)
+}
+
+func (s *streamableHttpSession) ReceiveNotificationChannel() <-chan mcp.JSONRPCNotification {
+	return s.notificationChannel
+}
+
+func (s *streamableHttpSession) UpgradeToSSE() bool {
+	return s.upgradeToSSE.Load()
 }
 
 var _ SessionWithStreamableHTTPConfig = (*streamableHttpSession)(nil)
