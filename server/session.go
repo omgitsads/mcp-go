@@ -62,6 +62,8 @@ type SessionWithStreamableHTTPConfig interface {
 	//
 	// Reference: https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#sending-messages-to-the-server
 	UpgradeToSSEWhenReceiveNotification()
+	ReceiveNotificationChannel() <-chan mcp.JSONRPCNotification
+	UpgradeToSSE() bool
 }
 
 // clientSessionKey is the context key for storing current client notification channel.
