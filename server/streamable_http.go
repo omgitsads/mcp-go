@@ -93,12 +93,17 @@ func WithLogger(logger util.Logger) StreamableHTTPOption {
 	}
 }
 
-func WithNewSessionFn(fn func(sessionID string, toolStore SessionToolStore) SessionWithStreamableHTTPConfig) StreamableHTTPOption {
+// NewSessionFn is a function type that creates a new session for the StreamableHTTPServer.
+type NewSessionFn func(context context.Context, sessionID string, toolStore SessionToolStore) SessionWithStreamableHTTPConfig
+
+// WithNewSessionFn sets a custom function to create new sessions for the server.
+func WithNewSessionFn(fn NewSessionFn) StreamableHTTPOption {
 	return func(s *StreamableHTTPServer) {
 		s.newSessionFn = fn
 	}
 }
 
+// WithNotificationsStreamDisabled disables the notifications stream.
 func WithNotificationsStreamDisabled(disabled bool) StreamableHTTPOption {
 	return func(s *StreamableHTTPServer) {
 		s.notificationsStreamDisabled = disabled
@@ -132,7 +137,7 @@ func WithNotificationsStreamDisabled(disabled bool) StreamableHTTPOption {
 type StreamableHTTPServer struct {
 	server            *MCPServer
 	sessionTools      SessionToolStore
-	newSessionFn      func(sessionID string, toolStore SessionToolStore) SessionWithStreamableHTTPConfig
+	newSessionFn      NewSessionFn
 	sessionRequestIDs sync.Map // sessionId --> last requestID(*atomic.Int64)
 
 	httpServer *http.Server
@@ -154,7 +159,7 @@ func NewStreamableHTTPServer(server *MCPServer, opts ...StreamableHTTPOption) *S
 		endpointPath:     "/mcp",
 		sessionIdManager: &InsecureStatefulSessionIdManager{},
 		logger:           util.DefaultLogger(),
-		newSessionFn: func(sessionID string, toolStore SessionToolStore) SessionWithStreamableHTTPConfig {
+		newSessionFn: func(ctx context.Context, sessionID string, toolStore SessionToolStore) SessionWithStreamableHTTPConfig {
 			return newStreamableHttpSession(sessionID, toolStore)
 		},
 	}
@@ -273,7 +278,7 @@ func (s *StreamableHTTPServer) handlePost(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	session := s.newSessionFn(sessionID, s.sessionTools)
+	session := s.newSessionFn(r.Context(), sessionID, s.sessionTools)
 
 	// Set the client context before handling the message
 	ctx := s.server.WithContext(r.Context(), session)
@@ -383,7 +388,7 @@ func (s *StreamableHTTPServer) handleGet(w http.ResponseWriter, r *http.Request)
 		sessionID = uuid.New().String()
 	}
 
-	session := s.newSessionFn(sessionID, s.sessionTools)
+	session := s.newSessionFn(r.Context(), sessionID, s.sessionTools)
 	if err := s.server.RegisterSession(r.Context(), session); err != nil {
 		http.Error(w, fmt.Sprintf("Session registration failed: %v", err), http.StatusBadRequest)
 		return
