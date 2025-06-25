@@ -94,7 +94,7 @@ func WithLogger(logger util.Logger) StreamableHTTPOption {
 }
 
 // NewSessionFn is a function type that creates a new session for the StreamableHTTPServer.
-type NewSessionFn func(context context.Context, sessionID string, toolStore SessionToolStore) SessionWithStreamableHTTPConfig
+type NewSessionFn func(context context.Context, sessionID string, toolStore SessionToolStore) (SessionWithStreamableHTTPConfig, error)
 
 // WithNewSessionFn sets a custom function to create new sessions for the server.
 func WithNewSessionFn(fn NewSessionFn) StreamableHTTPOption {
@@ -159,8 +159,8 @@ func NewStreamableHTTPServer(server *MCPServer, opts ...StreamableHTTPOption) *S
 		endpointPath:     "/mcp",
 		sessionIdManager: &InsecureStatefulSessionIdManager{},
 		logger:           util.DefaultLogger(),
-		newSessionFn: func(ctx context.Context, sessionID string, toolStore SessionToolStore) SessionWithStreamableHTTPConfig {
-			return newStreamableHttpSession(sessionID, toolStore)
+		newSessionFn: func(ctx context.Context, sessionID string, toolStore SessionToolStore) (SessionWithStreamableHTTPConfig, error) {
+			return newStreamableHttpSession(sessionID, toolStore), nil
 		},
 	}
 
@@ -278,7 +278,11 @@ func (s *StreamableHTTPServer) handlePost(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	session := s.newSessionFn(r.Context(), sessionID, s.sessionTools)
+	session, err := s.newSessionFn(r.Context(), sessionID, s.sessionTools)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create session: %v", err), http.StatusInternalServerError)
+		return
+	}
 
 	// Set the client context before handling the message
 	ctx := s.server.WithContext(r.Context(), session)
@@ -388,7 +392,12 @@ func (s *StreamableHTTPServer) handleGet(w http.ResponseWriter, r *http.Request)
 		sessionID = uuid.New().String()
 	}
 
-	session := s.newSessionFn(r.Context(), sessionID, s.sessionTools)
+	session, err := s.newSessionFn(r.Context(), sessionID, s.sessionTools)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create session: %v", err), http.StatusInternalServerError)
+		return
+	}
+
 	if err := s.server.RegisterSession(r.Context(), session); err != nil {
 		http.Error(w, fmt.Sprintf("Session registration failed: %v", err), http.StatusBadRequest)
 		return
