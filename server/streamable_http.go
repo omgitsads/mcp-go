@@ -103,6 +103,13 @@ func WithNewSessionFn(fn NewSessionFn) StreamableHTTPOption {
 	}
 }
 
+// WithSessionToolStore sets a custom session tool store for the server.
+func WithSessionToolStore(store SessionToolStore) StreamableHTTPOption {
+	return func(s *StreamableHTTPServer) {
+		s.sessionTools = store
+	}
+}
+
 // WithNotificationsStreamDisabled disables the notifications stream.
 func WithNotificationsStreamDisabled(disabled bool) StreamableHTTPOption {
 	return func(s *StreamableHTTPServer) {
@@ -380,6 +387,11 @@ func (s *StreamableHTTPServer) handlePost(w http.ResponseWriter, r *http.Request
 }
 
 func (s *StreamableHTTPServer) handleGet(w http.ResponseWriter, r *http.Request) {
+	if s.notificationsStreamDisabled {
+		http.Error(w, "GET requests are disabled", http.StatusMethodNotAllowed)
+		return
+	}
+
 	// get request is for listening to notifications
 	// https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#listening-for-messages-from-the-server
 
